@@ -169,6 +169,25 @@ class GetListStatuses(BaseModel):
 class GetTasksGroupedByStatus(BaseModel):
     list_id: str = Field(description="ID of the list/board")
 
+# Custom field models
+class GetCustomFields(BaseModel):
+    list_id: str = Field(description="ID of the list/board to get custom fields for")
+
+class SetCustomFieldValue(BaseModel):
+    task_id: str = Field(description="ID of the task to update")
+    field_id: str = Field(description="ID of the custom field to update")
+    value: Any = Field(description="Value to set for the custom field")
+
+class SetCustomFieldValueByName(BaseModel):
+    task_id: str = Field(description="ID of the task to update")
+    list_id: str = Field(description="ID of the list (needed to find custom field by name)")
+    field_name: str = Field(description="Name of the custom field to update")
+    value: Any = Field(description="Value to set for the custom field")
+
+class RemoveCustomFieldValue(BaseModel):
+    task_id: str = Field(description="ID of the task")
+    field_id: str = Field(description="ID of the custom field to remove value from")
+
 class ClickUpTools(str, Enum):
     GET_WORKSPACES = "get_workspaces"
     GET_SPACES = "get_spaces"
@@ -209,6 +228,11 @@ class ClickUpTools(str, Enum):
     CREATE_CHECKLIST_ITEM = "create_checklist_item"
     UPDATE_CHECKLIST_ITEM = "update_checklist_item"
     DELETE_CHECKLIST_ITEM = "delete_checklist_item"
+    # Custom field tools
+    GET_CUSTOM_FIELDS = "get_custom_fields"
+    SET_CUSTOM_FIELD_VALUE = "set_custom_field_value"
+    SET_CUSTOM_FIELD_VALUE_BY_NAME = "set_custom_field_value_by_name"
+    REMOVE_CUSTOM_FIELD_VALUE = "remove_custom_field_value"
 
 async def serve(api_key: str) -> None:
     """Run the ClickUp MCP server"""
@@ -410,6 +434,27 @@ async def serve(api_key: str) -> None:
                 name=ClickUpTools.DELETE_CHECKLIST_ITEM,
                 description="Delete a checklist item",
                 inputSchema=DeleteChecklistItem.schema(),
+            ),
+            # Custom field tools
+            Tool(
+                name=ClickUpTools.GET_CUSTOM_FIELDS,
+                description="Get all custom fields for a list/board",
+                inputSchema=GetCustomFields.schema(),
+            ),
+            Tool(
+                name=ClickUpTools.SET_CUSTOM_FIELD_VALUE,
+                description="Set a custom field value for a task using field ID",
+                inputSchema=SetCustomFieldValue.schema(),
+            ),
+            Tool(
+                name=ClickUpTools.SET_CUSTOM_FIELD_VALUE_BY_NAME,
+                description="Set a custom field value for a task using field name",
+                inputSchema=SetCustomFieldValueByName.schema(),
+            ),
+            Tool(
+                name=ClickUpTools.REMOVE_CUSTOM_FIELD_VALUE,
+                description="Remove a custom field value from a task",
+                inputSchema=RemoveCustomFieldValue.schema(),
             ),
         ]
 
@@ -1090,6 +1135,88 @@ async def serve(api_key: str) -> None:
                     return [TextContent(
                         type="text",
                         text=f"Deleted item {checklist_item_id} from checklist {checklist_id} successfully."
+                    )]
+                
+                # Custom field operations
+                case ClickUpTools.GET_CUSTOM_FIELDS:
+                    list_id = arguments["list_id"]
+                    fields = client.get_custom_fields(list_id)
+                    
+                    if not fields:
+                        return [TextContent(
+                            type="text",
+                            text=f"No custom fields found for list {list_id}"
+                        )]
+                    
+                    result = [f"Custom fields for list {list_id}:"]
+                    for i, field in enumerate(fields, 1):
+                        field_name = field.get("name", f"Field {i}")
+                        field_id = field.get("id", "unknown")
+                        field_type = field.get("type", "unknown")
+                        
+                        # Get type config info if available
+                        type_config = field.get("type_config", {})
+                        type_info = ""
+                        if field_type == "drop_down" and "options" in type_config:
+                            options = [opt.get("name", "Unknown") for opt in type_config.get("options", [])]
+                            type_info = f" (options: {', '.join(options[:3])}" + ("..." if len(options) > 3 else "") + ")"
+                        elif field_type == "url":
+                            type_info = " (URL field)"
+                        elif field_type == "text":
+                            type_info = " (text field)"
+                        elif field_type == "number":
+                            type_info = " (number field)"
+                        elif field_type == "date":
+                            type_info = " (date field)"
+                        
+                        result.append(f"  {i}. {field_name} (ID: {field_id}, Type: {field_type}{type_info})")
+                    
+                    return [TextContent(
+                        type="text",
+                        text="\n".join(result)
+                    )]
+                
+                case ClickUpTools.SET_CUSTOM_FIELD_VALUE:
+                    task_id = arguments["task_id"]
+                    field_id = arguments["field_id"]
+                    value = arguments["value"]
+                    
+                    result = client.set_custom_field_value(task_id, field_id, value)
+                    return [TextContent(
+                        type="text",
+                        text=f"Set custom field {field_id} to '{value}' for task {task_id}"
+                    )]
+                
+                case ClickUpTools.SET_CUSTOM_FIELD_VALUE_BY_NAME:
+                    task_id = arguments["task_id"]
+                    list_id = arguments["list_id"]
+                    field_name = arguments["field_name"]
+                    value = arguments["value"]
+                    
+                    # Find the custom field by name
+                    field = client.find_custom_field_by_name(list_id, field_name)
+                    if not field:
+                        return [TextContent(
+                            type="text",
+                            text=f"Custom field '{field_name}' not found in list {list_id}"
+                        )]
+                    
+                    field_id = field.get("id")
+                    result = client.set_custom_field_value(task_id, field_id, value)
+                    
+                    return [TextContent(
+                        type="text",
+                        text=f"Set custom field '{field_name}' (ID: {field_id}) to '{value}' for task {task_id}"
+                    )]
+                
+                case ClickUpTools.REMOVE_CUSTOM_FIELD_VALUE:
+                    task_id = arguments["task_id"]
+                    field_id = arguments["field_id"]
+                    
+                    result = client.remove_custom_field_value(task_id, field_id)
+                    return [TextContent(
+                        type="text",
+                        text=f"Removed custom field {field_id} value from task {task_id}"
                     )]
                 
                 case _:

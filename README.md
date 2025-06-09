@@ -255,6 +255,38 @@ The server provides the following tools for interacting with ClickUp:
       - `task_ids` (string[]): List of task IDs to delete
     - Returns: Confirmation of bulk deletion
 
+### Custom Field Tools
+
+29. `get_custom_fields`
+    - Gets all custom fields for a list/board
+    - Input:
+      - `list_id` (string): ID of the list/board
+    - Returns: List of custom fields with their IDs, names, types, and configuration
+
+30. `set_custom_field_value`
+    - Sets a custom field value for a task using field ID
+    - Inputs:
+      - `task_id` (string): ID of the task
+      - `field_id` (string): ID of the custom field
+      - `value` (any): Value to set for the custom field
+    - Returns: Confirmation of custom field update
+
+31. `set_custom_field_value_by_name`
+    - Sets a custom field value for a task using field name
+    - Inputs:
+      - `task_id` (string): ID of the task
+      - `list_id` (string): ID of the list (needed to find custom field by name)
+      - `field_name` (string): Name of the custom field
+      - `value` (any): Value to set for the custom field
+    - Returns: Confirmation of custom field update
+
+32. `remove_custom_field_value`
+    - Removes a custom field value from a task
+    - Inputs:
+      - `task_id` (string): ID of the task
+      - `field_id` (string): ID of the custom field
+    - Returns: Confirmation of custom field removal
+
 ## Installation
 
 ### Prerequisites
@@ -453,6 +485,13 @@ Claude can help you manage your ClickUp tasks:
    - Get all tasks marked "In Progress"
    - Compile a status report with completion estimates
    - Create new tasks for blockers or dependencies
+
+4. **Custom Field Management**:
+   Claude can work with custom fields to enhance your workflow:
+   - List all custom fields in a project to see available metadata
+   - Set custom field values like "GitHub Pull Request URL" when creating PRs
+   - Update project tracking fields like "Sprint", "Story Points", or "Priority"
+   - Example: "Create a PR for this branch and add the GitHub URL to the 'GitHub Pull Request URL' custom field in the related ClickUp task"
 
 ## Debugging
 

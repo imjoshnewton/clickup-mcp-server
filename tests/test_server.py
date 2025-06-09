@@ -1,9 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
-import asyncio
 from clickup_mcp_server.server import serve, ClickUpTools
-from mcp.types import TextContent
-import json
 
 # Mock ClickUpClient class
 @pytest.fixture

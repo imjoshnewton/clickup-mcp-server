@@ -266,7 +266,7 @@ class ClickUpClient:
             return response.get("subtasks", [])
         
         # Fallback method: get the list and filter by parent field
-        self.logger.debug(f"Subtasks not found in response, trying fallback method")
+        self.logger.debug("Subtasks not found in response, trying fallback method")
         
         # Get the task to determine which list it belongs to
         list_id = response.get("list", {}).get("id")
@@ -475,3 +475,27 @@ class ClickUpClient:
         }
         
         return result
+
+    # Custom field methods
+    
+    def get_custom_fields(self, list_id: str) -> List[Dict]:
+        """Get all custom fields for a list"""
+        response = self._make_request("GET", f"/list/{list_id}/field")
+        return response.get("fields", [])
+    
+    def set_custom_field_value(self, task_id: str, field_id: str, value: Any) -> Dict:
+        """Set a custom field value for a task"""
+        data = {"value": value}
+        return self._make_request("POST", f"/task/{task_id}/field/{field_id}", data=data)
+    
+    def remove_custom_field_value(self, task_id: str, field_id: str) -> Dict:
+        """Remove a custom field value from a task"""
+        return self._make_request("DELETE", f"/task/{task_id}/field/{field_id}")
+    
+    def find_custom_field_by_name(self, list_id: str, field_name: str) -> Optional[Dict]:
+        """Find a custom field by name in a list"""
+        fields = self.get_custom_fields(list_id)
+        for field in fields:
+            if field.get("name", "").lower() == field_name.lower():
+                return field
+        return None
