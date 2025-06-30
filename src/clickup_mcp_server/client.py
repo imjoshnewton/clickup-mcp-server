@@ -180,7 +180,13 @@ class ClickUpClient:
     
     def get_tasks(self, list_id: str, params: Optional[Dict] = None) -> List[Dict]:
         """Get tasks in a list with optional filtering"""
-        response = self._make_request("GET", f"/list/{list_id}/task", params=params)
+        # Default to including subtasks for better functionality
+        default_params = {"subtasks": True}
+        
+        if params:
+            default_params.update(params)
+        
+        response = self._make_request("GET", f"/list/{list_id}/task", params=default_params)
         return response.get("tasks", [])
     
     def get_tasks_by_status(self, list_id: str, status: str) -> List[Dict]:
@@ -216,6 +222,31 @@ class ClickUpClient:
                 result[status_name].append(task)
         
         return result
+    
+    def get_tasks_with_subtasks(self, list_id: str) -> Dict[str, List[Dict]]:
+        """Get all tasks in a list, organized by parent-child relationships"""
+        # Get all tasks including subtasks
+        all_tasks = self.get_tasks(list_id, {"subtasks": True})
+        
+        # Separate parent tasks from subtasks
+        parent_tasks = []
+        subtasks_by_parent = {}
+        
+        for task in all_tasks:
+            parent_id = task.get("parent")
+            if parent_id:
+                # This is a subtask
+                if parent_id not in subtasks_by_parent:
+                    subtasks_by_parent[parent_id] = []
+                subtasks_by_parent[parent_id].append(task)
+            else:
+                # This is a parent task
+                parent_tasks.append(task)
+        
+        return {
+            "parent_tasks": parent_tasks,
+            "subtasks_by_parent": subtasks_by_parent
+        }
     
     def create_task(self, list_id: str, name: str, **kwargs) -> Dict:
         """Create a new task in a list"""
@@ -255,27 +286,44 @@ class ClickUpClient:
     
     def get_task_subtasks(self, task_id: str) -> List[Dict]:
         """Get subtasks for a task"""
-        # Use the subtasks parameter to directly get subtasks
-        # The ClickUp API documentation indicates this is the correct approach
+        # First try: Get task details with subtasks parameter to see if it returns subtasks directly
         params = {"subtasks": True, "include_subtasks": True}
-        response = self._make_request("GET", f"/task/{task_id}", params=params)
+        task_response = self._make_request("GET", f"/task/{task_id}", params=params)
         
-        # Check if we got subtasks directly
-        if "subtasks" in response and isinstance(response["subtasks"], list):
-            self.logger.debug(f"Found {len(response['subtasks'])} subtasks using direct method")
-            return response.get("subtasks", [])
+        # Check if we got subtasks directly in the response
+        if "subtasks" in task_response and isinstance(task_response["subtasks"], list):
+            subtasks = task_response["subtasks"]
+            self.logger.debug(f"Found {len(subtasks)} subtasks using direct method")
+            
+            # Sort subtasks by orderindex if available
+            subtasks.sort(key=lambda x: x.get("orderindex", 0))
+            return subtasks
+        
+        # Second try: Use the team endpoint with parent filter (best practice)
+        team_id = task_response.get("team_id")
+        if team_id:
+            try:
+                params = {"parent": task_id}
+                response = self._make_request("GET", f"/team/{team_id}/task", params=params)
+                subtasks = response.get("tasks", [])
+                
+                self.logger.debug(f"Found {len(subtasks)} subtasks using team endpoint method")
+                
+                # Sort subtasks by orderindex if available
+                subtasks.sort(key=lambda x: x.get("orderindex", 0))
+                return subtasks
+                
+            except Exception as e:
+                self.logger.warning(f"Team endpoint method failed: {e}, trying fallback method")
         
         # Fallback method: get the list and filter by parent field
-        self.logger.debug("Subtasks not found in response, trying fallback method")
-        
-        # Get the task to determine which list it belongs to
-        list_id = response.get("list", {}).get("id")
+        list_id = task_response.get("list", {}).get("id")
         if not list_id:
             self.logger.warning(f"Could not determine list_id for task {task_id}")
             return []
         
-        # Get all tasks in the list and filter for those with parent=task_id
-        all_tasks = self.get_tasks(list_id, {"include_subtasks": True})
+        # Get all tasks in the list with subtasks included and filter
+        all_tasks = self.get_tasks(list_id, {"subtasks": True})
         subtasks = [
             task for task in all_tasks 
             if task.get("parent") == task_id

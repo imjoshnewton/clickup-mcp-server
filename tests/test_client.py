@@ -381,11 +381,11 @@ class TestClickUpClient:
             json=None
         )
         
-        # Second call - get all tasks in the list with include_subtasks param
+        # Second call - get all tasks in the list with subtasks param (updated implementation)
         assert mock_request.call_args_list[1] == call(
             method="GET",
             url="https://api.clickup.com/api/v2/list/list123/task",
             headers={"Authorization": "test_api_key", "Content-Type": "application/json"},
-            params={"include_subtasks": True},
+            params={"subtasks": True},
             json=None
         )
